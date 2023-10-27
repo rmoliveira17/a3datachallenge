@@ -11,9 +11,9 @@ statistics = {}
 
 data_grouped_by_locations = pd.DataFrame(data[['x', 'y']].groupby(by=['x', 'y']).value_counts())
 
-interval = 10
+interval = 15
 
-for ic in np.arange(0, 100, 10):
+for ic in np.arange(0, 100, interval):
     id = ic + interval
     for ia in np.arange(0, 100, interval):
         ib = ia + interval
@@ -49,6 +49,7 @@ for m, n in statistics_treated:
     y_coord = sets['y'].drop_duplicates()
 
     x = pulp.LpVariable.dicts('x', (x_coord.to_list(),y_coord.to_list() ), lowBound=0, upBound= 1,  cat='Integer')
+    y = pulp.LpVariable.dicts('y',( x_coord,y_coord, cars), lowBound=0, upBound= 1,  cat='Integer')
 
     model = LpProblem("alocacao", LpMinimize)
     model += lpSum(x[i][j] for i in x_coord.to_list() for j in y_coord.to_list())
@@ -56,10 +57,9 @@ for m, n in statistics_treated:
     # Restrição 1
     k = 0
     for c in cars.to_list():
-            model += lpSum(duration_by_car_index.loc[(i, j, c), 'duration'] * x[i][j] for i , j in zip(duration_by_car.query('id_car==@c').x.to_list(), duration_by_car.query('id_car==@c').y.to_list()))/(total_duration_by_car.loc[c, 'duration']) >= a
+            model += lpSum(duration_by_car_index.loc[(i, j, c), 'duration'] * y[i][j][c] for i , j in zip(duration_by_car.query('id_car==@c').x.to_list(), duration_by_car.query('id_car==@c').y.to_list()))/(total_duration_by_car.loc[c, 'duration']) >= a
 
     # Restrição 2
-    y = pulp.LpVariable.dicts('y',( x_coord,y_coord, cars), lowBound=0, upBound= 1,  cat='Integer')
     model += lpSum( y[i][j][c] for i, j, c in duration_by_car_grouped.index)/len(total_duration_by_car) >= b
 
     # Restrição 3
@@ -76,11 +76,15 @@ for m, n in statistics_treated:
 
     solutions[(m,n)] = aux
 
+
+#Output para pós-otimização - Excel
+
 pd.DataFrame([]).to_excel('saida'+str(interval)+'.xlsx')
 
-#Output para pós-otimização
 for m, n in statistics_treated:
-    aa = pd.DataFrame(solutions[(m, n)].values(), index=solutions[(m, n)].keys(), columns = ['var'])
+    aa = pd.DataFrame({'x':[ia[0] for ia in solutions[(m, n)].keys()],
+                       'y':[ia[1] for ia in solutions[(m, n)].keys()],
+                       'val': solutions[(m, n)].values()})
     with pd.ExcelWriter('saida' + str(interval) + '.xlsx', engine='openpyxl', mode='a') as writer:
-        aa.to_excel(writer, sheet_name='('+str(m)+','+str(n)+')', index=True)
+        aa.to_excel(writer, sheet_name='('+str(m)+', '+str(n)+')', index=False)
 
